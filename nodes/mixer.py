@@ -7,6 +7,8 @@ from mavros_msgs.msg import MotorSetpoint
 from nav_msgs.msg import Odometry
 import tf
 import numpy as np
+from dynamic_reconfigure.server import Server
+from fav_control.cfg import MixConfig
 
 
 class MixerNode():
@@ -51,6 +53,16 @@ class MixerNode():
 
         self.max_msg_timeout = 0.1
 
+        self.enable_x = True
+        self.enable_y = True
+        self.enable_z = True
+        self.enable_roll = False
+        self.enable_pitch = False
+        self.enable_yaw = True
+
+        self.roll_is_zero = True
+        self.pitch_is_zero = True
+
         self.estimated_state_sub = rospy.Subscriber("estimated_state",
                                                     Odometry,
                                                     self.on_state,
@@ -78,6 +90,8 @@ class MixerNode():
         self.lateral_thrust_sub = rospy.Subscriber("lateral_thrust", Float64,
                                                    self.on_lateral_thrust)
 
+        self.server = Server(MixConfig, self.server_callback)
+
     def arm_vehicle(self): 
         # wait until the arming serivce becomes available
         rospy.wait_for_service("mavros/cmd/arming")
@@ -96,41 +110,89 @@ class MixerNode():
             self.setpoint_pub.publish(msg)
             rate.sleep()
 
+    def server_callback(self, config, level):
+        with self.data_lock:
+            self.enable_x = congig.enable_x
+            if not self.enable_x:
+                rospy.logwarn('X-Controller is disabled.')
+            self.enable_y = congig.enable_y
+            if not self.enable_y:
+                rospy.logwarn('Y-Controller is disabled.')
+            self.enable_z = congig.enable_z
+            if not self.enable_z:
+                rospy.logwarn('Z-Controller is disabled.')
+            self.enable_roll = congig.enable_roll
+            if not self.enable_roll:
+                rospy.logwarn('Roll-Controller is disabled.')
+            self.enable_pitch = congig.enable_pitch
+            if not self.enable_pitch:
+                rospy.logwarn('Pitch-Controller is disabled.')
+            self.enable_yaw = congig.enable_yaw
+            if not self.enable_yaw:
+                rospy.logwarn('Yaw-Controller is disabled.')
+
+            self.roll_is_zero = roll_is_zero
+            self.pitch_is_zero = pitch_is_zero
+
+        return config
+
     def on_state(self, msg):
         with self.data_lock:
             self.state_msg_time = msg.header.stamp.to_sec()
-            quaternion = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
-            self.rot_matrix = tf.transformations.quaternion_matrix(quaternion)[:3, :3]
+            euler = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+            if self.roll_is_zero:
+                euler[0] = 0
+            if self.pitch_is_zero:
+                euler[1] = 0
+            self.rot_matrix = tf.transformations.euler_matrix(euler[0], euler[1], euler[2])[:3, :3]
 
     def on_roll(self, msg):
         with self.data_lock:
-            self.roll_raw = msg.data
-            self.roll_msg_time = rospy.get_time()
+            if self.enable_roll:
+                self.roll_raw = msg.data
+                self.roll_msg_time = rospy.get_time()
+            else:
+                self.roll_raw = 0
 
     def on_pitch(self, msg):
         with self.data_lock:
-            self.pitch_raw = msg.data
-            self.pitch_msg_time = rospy.get_time()
+            if self.enable_pitch:
+                self.pitch_raw = msg.data
+                self.pitch_msg_time = rospy.get_time()
+            else:
+                self.pitch_raw = 0
 
     def on_yaw(self, msg):
         with self.data_lock:
-            self.yaw_raw = msg.data
-            self.yaw_msg_time = rospy.get_time()
+            if self.enable_yaw:
+                self.yaw_raw = msg.data
+                self.yaw_msg_time = rospy.get_time()
+            else:
+                self.yaw_raw = 0
 
     def on_thrust(self, msg):
         with self.data_lock:
-            self.thrust_raw = msg.data
-            self.thrust_msg_time = rospy.get_time()
+            if self.enable_x:
+                self.thrust_raw = msg.data
+                self.thrust_msg_time = rospy.get_time()
+            else:
+                self.thrust_raw = 0
 
     def on_vertical_thrust(self, msg):
         with self.data_lock:
-            self.vertical_thrust_raw = msg.data
-            self.vertical_thrust_msg_time = rospy.get_time()
+            if self.enable_z:
+                self.vertical_thrust_raw = msg.data
+                self.vertical_thrust_msg_time = rospy.get_time()
+            else:
+                self.vertical_thrust_raw = 0
 
     def on_lateral_thrust(self, msg):
         with self.data_lock:
-            self.lateral_thrust_raw = msg.data
-            self.lateral_thrust_msg_time = rospy.get_time()
+            if self.enable_y:
+                self.lateral_thrust_raw = msg.data
+                self.lateral_thrust_msg_time = rospy.get_time()
+            else:
+                self.lateral_thrust_raw = 0
 
     def transform(self):
         with self.data_lock:
@@ -154,22 +216,22 @@ class MixerNode():
             self.vertical_thrust = 0.0
             self.lateral_thrust = 0.0
             return
-        if self.roll_msg_time < latest_time_allowed:
-            # rospy.logwarn_throttle(1.0, "No roll control received!")
+        if self.enable_roll and (self.roll_msg_time < latest_time_allowed):
+            rospy.logwarn_throttle(1.0, "No roll control received!")
             self.roll = 0.0
-        if self.pitch_msg_time < latest_time_allowed:
-            # rospy.logwarn_throttle(1.0, "No pitch control received!")
+        if self.enable_pitch and (self.pitch_msg_time < latest_time_allowed):
+            rospy.logwarn_throttle(1.0, "No pitch control received!")
             self.pitch = 0.0
-        if self.yaw_msg_time < latest_time_allowed:
+        if self.enable_yaw and (self.yaw_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(1.0, "No yaw control received!")
             self.yaw = 0.0
-        if self.thrust_msg_time < latest_time_allowed:
+        if self.enable_x and (self.thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(1.0, "No thrust control received!")
             self.thrust = 0.0
-        if self.vertical_thrust_msg_time < latest_time_allowed:
+        if self.enable_y and (self.vertical_thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(1.0, "No vertical_thrust control received!")
             self.vertical_thrust = 0.0
-        if self.lateral_thrust_msg_time < latest_time_allowed:
+        if self.enable_z and (self.lateral_thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(1.0, "No lateral_thrust control received!")
             self.lateral_thrust = 0.0
 

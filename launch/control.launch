@@ -1,0 +1,51 @@
+<launch>
+
+    <arg name="simulate" default="true"/>
+    <arg name="launch_simulation" default="true"/>
+    <arg name="launch_x_control" default="true"/>
+    <arg name="launch_y_control" default="true"/>
+    <arg name="launch_z_control" default="true"/>
+    <arg name="launch_roll_control" default="false"/>
+    <arg name="launch_pitch_control" default="false"/>
+    <arg name="launch_yaw_control" default="true"/>
+    <arg name="record" default="false"/>
+
+    <build_depend>message_generation</build_depend>
+    <exec_depend>message_runtime</exec_depend>
+
+    <group if="$(arg launch_simulation)">
+        <include file="$(find bluerov_sim)/launch/gazebo_base.launch"/>
+
+        <include file="$(find bluerov_sim)/launch/spawn_vehicle.launch">
+            <arg name="z" value="-0.3"/>
+        </include>
+    </group>
+
+    <param name="simulate" value="$(arg simulate)" type="bool" />
+
+    <node name="mixer" pkg="fav_control" type="mixer.py" output="screen" />
+
+    <group if="$(arg launch_x_control)">
+        <node name="xController" pkg="fav_control" type="xController.py" output="screen" />
+    </group>
+    <group if="$(arg launch_y_control)">
+        <node name="yController" pkg="fav_control" type="yController.py" output="screen" />
+    </group>
+    <group if="$(arg launch_z_control)">
+        <node name="zController" pkg="fav_control" type="zController.py" output="screen" />
+    </group>
+    <group if="$(arg launch_roll_control)">
+        <node name="rollController" pkg="fav_control" type="rollController.py" output="screen" />
+    </group>
+    <group if="$(arg launch_pitch_control)">
+        <node name="pitchController" pkg="fav_control" type="pitchController.py" output="screen" />
+    </group>
+    <group if="$(arg launch_yaw_control)">
+        <node name="yawController" pkg="fav_control" type="yawController.py" output="screen" />
+    </group>
+
+    <group if="$(arg record)">
+        <node name="record" pkg="rosbag" type="record" args="-o ~/fav/bagfiles/bag /depth_setpoint /parameters /mavros/setpoint_motor/setpoint /state /vertical_thrust /control_error /pressure /rosout"/>
+    </group>
+
+</launch>
