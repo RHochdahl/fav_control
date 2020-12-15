@@ -8,6 +8,7 @@ from dynamic_reconfigure.server import Server
 from fav_control.cfg import YawControlConfig
 
 import tf
+import numpy as np
 
 import threading
 import math
@@ -20,20 +21,20 @@ from fav_control.msg import StateVector3D
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = None
+        self.e1 = 0.0
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
 
         # 0 =SMC, 1=PD-Controller
-        self.controller_type = 1
+        self.controller_type = 0
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 0.1
-        self.k_d = 0.03
+        self.k_p = 5.0
+        self.k_d = 2.0
 
         # SMC
-        self.alpha = 0.01
+        self.alpha = 0.5
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -97,7 +98,7 @@ class ControllerNode():
         with self.data_lock:
             rospy.loginfo("New Parameters received by yaw_Controller")
 
-            # self.controller_type = config.controller_type
+            self.controller_type = config.controller_type
 
             self.k_p = config.k_p
             self.k_d = config.k_d
@@ -148,7 +149,7 @@ class ControllerNode():
             return 0.0
         
         if self.controller_type == 0:
-            # integral-SMC
+            # SMC
             self.e1 = self.get_angular_error(self.desired_yaw, self.current_yaw)
             self.e2 = self.desired_yaw_vel - self.current_yaw_vel
             s = self.e2 + self.Lambda*self.e1
@@ -159,7 +160,7 @@ class ControllerNode():
             self.e1 = self.get_angular_error(self.desired_yaw, self.current_yaw)
             self.e2 = self.desired_yaw_vel - self.current_yaw_vel
             u = self.k_p * self.e1 + self.k_d * self.e2
-            
+
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
@@ -167,11 +168,11 @@ class ControllerNode():
         return self.sat(u)
 
     def get_angular_error(self, desired_angle, current_angle):
-        e = (desired_angle - current_angle) % 360
-        if e > 180:
-            return e - 360
-        elif e < -180:
-            return e + 360
+        e = (desired_angle % (2*np.pi)) - (current_angle % (2*np.pi))
+        if e > np.pi:
+            return e - 2*np.pi
+        elif e < -np.pi:
+            return e + 2*np.pi
         else:
             return e
 

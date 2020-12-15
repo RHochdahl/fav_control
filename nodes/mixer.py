@@ -144,7 +144,9 @@ class MixerNode():
                 roll = 0
             if self.pitch_is_zero:
                 pitch = 0
+            # rospy.loginfo_throttle(1, '\n' + str(roll) + '\n' + str(pitch) + '\n' + str(yaw))
             self.rot_matrix = tf.transformations.euler_matrix(roll, pitch, yaw)[:3, :3]
+            self.transform()
 
     def on_roll(self, msg):
         with self.data_lock:
@@ -196,16 +198,18 @@ class MixerNode():
 
     def transform(self):
         with self.data_lock:
-            buf_lin = np.matmul(self.rot_matrix.T, self.matrix([[self.thrust_raw], [self.lateral_trust_raw], [self.vertical_thrust_raw]]))
-            buf_ang = np.matmul(self.rot_matrix.T, self.matrix([[self.roll_raw], [self.pitch_raw], [self.yaw_raw]]))
+            buf_lin = np.matmul(self.rot_matrix.T, np.array([[self.thrust_raw], [self.lateral_thrust_raw], [self.vertical_thrust_raw]]))
+            buf_ang = np.matmul(self.rot_matrix.T, np.array([[self.roll_raw], [self.pitch_raw], [self.yaw_raw]]))
             self.thrust = buf_lin[0, 0]
-            self.lateral_trust = buf_lin[1, 0]
+            self.lateral_thrust = buf_lin[1, 0]
             self.vertical_thrust = buf_lin[2, 0]
             self.roll = buf_ang[0, 0]
             self.pitch = buf_ang[1, 0]
             self.yaw = buf_ang[2, 0]
+            # rospy.loginfo_throttle(1.0, buf_lin)
 
     def check_msg_times(self):
+        # rospy.loginfo_throttle(1, 'sub\n' + str(self.roll) + '\n' + str(self.pitch) + '\n' + str(self.yaw) + '\n' + str(self.thrust) + '\n' + str(self.lateral_thrust) + '\n' + str(self.vertical_thrust))
         latest_time_allowed = rospy.get_time() - self.max_msg_timeout
         if self.state_msg_time < latest_time_allowed:
             rospy.logwarn_throttle(1.0, "Mixer received no Orientation Data!")
@@ -228,12 +232,13 @@ class MixerNode():
         if self.enable_x and (self.thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(10.0, "No thrust control received!")
             self.thrust = 0.0
-        if self.enable_y and (self.vertical_thrust_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(10.0, "No vertical_thrust control received!")
-            self.vertical_thrust = 0.0
-        if self.enable_z and (self.lateral_thrust_msg_time < latest_time_allowed):
+        if self.enable_y and (self.lateral_thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(10.0, "No lateral_thrust control received!")
             self.lateral_thrust = 0.0
+        if self.enable_z and (self.vertical_thrust_msg_time < latest_time_allowed):
+            rospy.logwarn_throttle(10.0, "No vertical_thrust control received!")
+            self.vertical_thrust = 0.0
+        # rospy.loginfo_throttle(1, 'post\n' + str(self.roll) + '\n' + str(self.pitch) + '\n' + str(self.yaw) + '\n' + str(self.thrust) + '\n' + str(self.lateral_thrust) + '\n' + str(self.vertical_thrust))
 
     def mix(self):
         msg = MotorSetpoint()

@@ -18,20 +18,20 @@ from fav_control.msg import StateVector3D
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = None
+        self.e1 = 0.0
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
 
         # 0 =integral-SMC, 1=PID-Controller, 2=SMC with separate i
-        self.controller_type = 0
+        self.controller_type = 1
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 1.0
+        self.k_p = 2.0
         self.k_d = 0.6
 
         # SMC
-        self.alpha = 0.3
+        self.alpha = 0.5
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -41,6 +41,8 @@ class ControllerNode():
         self.desired_y_acceleration = 0.0
         self.current_y_pos = None
         self.current_y_velocity = None
+        self.y_uncertainty = 1.0
+        self.k_u = 2.0
 
         self.state_msg_time = 0.0
 
@@ -75,7 +77,18 @@ class ControllerNode():
                                             StateVector3D,
                                             self.get_setpoint,
                                             queue_size=1)
+    
+    def run(self):
+        rate = rospy.Rate(50.0)
 
+        while not rospy.is_shutdown():
+            u = self.controller()
+            self.send_control_message(u)
+
+            self.publish_error()
+
+            rate.sleep()
+        
     def send_control_message(self, u):
         msg = Float64()
         msg.data = u
@@ -98,6 +111,7 @@ class ControllerNode():
             rospy.loginfo("New Parameters received by y_Controller")
 
             self.controller_type = config.controller_type
+            self.k_u = config.k_u
 
             self.k_p = config.k_p
             self.k_d = config.k_d
@@ -109,27 +123,17 @@ class ControllerNode():
             
         return config
 
-    def run(self):
-        rate = rospy.Rate(10.0)
-
-        while not rospy.is_shutdown():
-            u = self.controller()
-            self.send_control_message(u)
-
-            self.publish_error()
-
-            rate.sleep()
-        
     def get_setpoint(self, msg):
         with self.data_lock:
-            self.desired_y_pos = msg.y_position
-            self.desired_y_velocity = msg.y_velocity
-            self.desired_y_acceleration = msg.y_acceleration
+            self.desired_y_pos = msg.position
+            self.desired_y_velocity = msg.velocity
+            self.desired_y_acceleration = msg.acceleration
     
     def get_current_state(self, msg):
         with self.data_lock:
             self.current_y_pos = msg.pose.pose.position.y
             self.current_y_velocity = msg.twist.twist.linear.y
+            self.y_uncertainty = msg.pose.covariance[7]
             self.state_msg_time = rospy.get_time()
 
     def controller(self):
@@ -161,13 +165,15 @@ class ControllerNode():
             self.e1 = self.desired_y_pos - self.current_y_pos
             self.e2 = self.desired_y_velocity - self.current_y_velocity
             s = self.e2 + self.Lambda*self.e1
-            u = self.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            k = 10**(-self.k_u*self.y_uncertainty)
+            u = k * self.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         elif self.controller_type == 1:
             # PID-Controller
             self.e1 = self.desired_y_pos - self.current_y_pos
             self.e2 = self.desired_y_velocity - self.current_y_velocity
-            u = self.k_p * self.e1 + self.k_d * self.e2
+            k = 10**(-self.k_u*self.y_uncertainty)
+            u = k * (self.k_p * self.e1 + self.k_d * self.e2)
             
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")

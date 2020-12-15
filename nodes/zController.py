@@ -18,7 +18,7 @@ from fav_control.msg import StateVector3D
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = None
+        self.e1 = 0.0
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
@@ -50,6 +50,7 @@ class ControllerNode():
 
         self.deep_z_limit = -0.8
         self.shallow_z_limit = -0.1
+        self.z_d_limit = 0.5
 
         self.k_i = 0.2 # 1.0
         self.integrator_buffer = 0.0
@@ -133,9 +134,9 @@ class ControllerNode():
         
     def get_setpoint(self, msg):
         with self.data_lock:
-            self.desired_z_pos = msg.z_position
-            self.desired_z_velocity = msg.z_velocity
-            self.desired_z_acceleration = msg.z_acceleration
+            self.desired_z_pos = msg.position
+            self.desired_z_velocity = msg.velocity
+            self.desired_z_acceleration = msg.acceleration
     
     def get_current_state(self, msg):
         with self.data_lock:
@@ -164,7 +165,7 @@ class ControllerNode():
 
         # return 0.0 if z_pos is 'unsafe'
         if ((self.current_z_pos < self.deep_z_limit) or (self.current_z_pos > self.shallow_z_limit)):
-            rospy.logwarn_throttle(10.0, "Diving z outside safe region!")
+            rospy.logwarn_throttle(10.0, "z outside safe region!")
             return 0.0
         
         delta_t = rospy.get_time() - self.time

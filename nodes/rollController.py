@@ -8,6 +8,7 @@ from dynamic_reconfigure.server import Server
 from fav_control.cfg import RollControlConfig
 
 import tf
+import numpy as np
 
 import threading
 import math
@@ -20,7 +21,7 @@ from fav_control.msg import StateVector3D
 
 class ControllerNode():
     def __init__(self):
-        self.e1 = None
+        self.e1 = 0.0
         self.e2 = 0.0
         
         self.data_lock = threading.RLock()
@@ -192,11 +193,11 @@ class ControllerNode():
         return self.sat(u)
     
     def get_angular_error(self, desired_angle, current_angle):
-        e = (desired_angle - current_angle) % 360
-        if e > 180:
-            return e - 360
-        elif e < -180:
-            return e + 360
+        e = (desired_angle % (2*np.pi)) - (current_angle % (2*np.pi))
+        if e > np.pi:
+            return e - 2*np.pi
+        elif e < -np.pi:
+            return e + 2*np.pi
         else:
             return e
 
