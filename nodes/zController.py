@@ -12,9 +12,8 @@ import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
-from depth_controller.msg import StateVector2D
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_control.msg import StateVector2D
+from fav_control.msg import StateVector3D
 
 
 class ControllerNode():
@@ -146,21 +145,26 @@ class ControllerNode():
 
     def controller(self):
         if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(1.0, "No state information received!")
+            rospy.logwarn_throttle(10.0, "No state information received!")
             return 0.0
 
         if self.controller_type is None:
-            rospy.logwarn_throttle(1.0, "No controller chosen!")
+            rospy.logwarn_throttle(10.0, "No controller chosen!")
             return 0.0
 
-        # return 0.0 if z_pos or setpoint is 'unsafe'
+        # return 0.0 if setpoint is 'unsafe'
         if ((self.desired_z_pos < self.deep_z_limit) or (self.desired_z_pos > self.shallow_z_limit)):
-            rospy.logwarn_throttle(1.0, "z setpoint outside safe region!")
+            rospy.logwarn_throttle(10.0, "z setpoint outside safe region!")
             return 0.0
 
-        # return 0.0 if z_pos or setpoint is 'unsafe'
+        # return 0.0 if setpoint velocity is 'unsafe'
+        if ((self.desired_z_velocity < -self.z_d_limit) or (self.desired_z_velocity > self.z_d_limit)):
+            rospy.logwarn_throttle(10.0, "z velocity setpoint outside safe region!")
+            return 0.0
+
+        # return 0.0 if z_pos is 'unsafe'
         if ((self.current_z_pos < self.deep_z_limit) or (self.current_z_pos > self.shallow_z_limit)):
-            rospy.logwarn_throttle(5.0, "Diving z outside safe region!")
+            rospy.logwarn_throttle(10.0, "Diving z outside safe region!")
             return 0.0
         
         delta_t = rospy.get_time() - self.time

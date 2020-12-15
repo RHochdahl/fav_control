@@ -14,9 +14,8 @@ import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
-from depth_controller.msg import StateVector2D
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_control.msg import StateVector2D
+from fav_control.msg import StateVector3D
 
 
 class ControllerNode():
@@ -50,6 +49,8 @@ class ControllerNode():
         self.state_msg_time = 0.0
 
         self.max_msg_timeout = 0.1
+
+        self.pitch_d_limit = 1.0
 
         self.k_i = 0.2 # 1.0
         self.integrator_buffer = 0.0
@@ -146,21 +147,16 @@ class ControllerNode():
 
     def controller(self):
         if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(1.0, "No state information received!")
+            rospy.logwarn_throttle(10.0, "No state information received!")
             return 0.0
 
         if self.controller_type is None:
-            rospy.logwarn_throttle(1.0, "No controller chosen!")
+            rospy.logwarn_throttle(10.0, "No controller chosen!")
             return 0.0
 
-        # return 0.0 if roll or setpoint is 'unsafe'
-        if ((self.desired_pitch < self.deep_z_limit) or (self.desired_pitch > self.shallow_z_limit)):
-            rospy.logwarn_throttle(1.0, "z setpoint outside safe region!")
-            return 0.0
-
-        # return 0.0 if roll or setpoint is 'unsafe'
-        if ((self.current_pitch < self.deep_z_limit) or (self.current_pitch > self.shallow_z_limit)):
-            rospy.logwarn_throttle(5.0, "Diving z outside safe region!")
+        # return 0.0 if setpoint is 'unsafe'
+        if ((self.desired_pitch_vel < -self.pitch_d_limit) or (self.desired_pitch_vel > self.pitch_d_limit)):
+            rospy.logwarn_throttle(10.0, "pitch angular velocity setpoint outside safe region!")
             return 0.0
         
         delta_t = rospy.get_time() - self.time

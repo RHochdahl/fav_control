@@ -25,9 +25,11 @@ generate_dynamic_reconfigure_options(
 # add_dependencies(your_program ${${PROJECT_NAME}_EXPORTED_TARGETS})
 # add_dependencies(your_library ${${PROJECT_NAME}_EXPORTED_TARGETS})
 
-# add_message_files(
-#   FILES
-# )
+add_message_files(
+  FILES
+  StateVector2D.msg
+  StateVector3D.msg
+)
 
 generate_messages(
   DEPENDENCIES

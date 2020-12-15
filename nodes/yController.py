@@ -12,9 +12,8 @@ import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
-from depth_controller.msg import StateVector2D
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_control.msg import StateVector2D
+from fav_control.msg import StateVector3D
 
 
 class ControllerNode():
@@ -37,8 +36,6 @@ class ControllerNode():
         self.kappa = 2.5
         self.epsilon = 0.4
 
-        self.int_sat = 0.01
-
         self.desired_y_pos = -0.5
         self.desired_y_velocity = 0.0
         self.desired_y_acceleration = 0.0
@@ -51,6 +48,7 @@ class ControllerNode():
 
         self.min_y_limit = 0.1
         self.max_y_limit = 3.25
+        self.y_d_limit = 0.5
 
         rospy.init_node("yController")
         
@@ -136,21 +134,26 @@ class ControllerNode():
 
     def controller(self):
         if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(1.0, "No state information received!")
+            rospy.logwarn_throttle(10.0, "No state information received!")
             return 0.0
 
         if self.controller_type is None:
-            rospy.logwarn_throttle(1.0, "No controller chosen!")
+            rospy.logwarn_throttle(10.0, "No controller chosen!")
             return 0.0
 
-        # return 0.0 if y_pos or setpoint is 'unsafe'
+        # return 0.0 if setpoint is 'unsafe'
         if ((self.desired_y_pos < self.min_y_limit) or (self.desired_y_pos > self.max_y_limit)):
-            rospy.logwarn_throttle(1.0, "y setpoint outside safe region!")
+            rospy.logwarn_throttle(10.0, "y setpoint outside safe region!")
             return 0.0
 
-        # return 0.0 if y_pos or setpoint is 'unsafe'
+        # return 0.0 if setpoint velocity is 'unsafe'
+        if ((self.desired_y_velocity < -self.y_d_limit) or (self.desired_y_velocity > self.y_d_limit)):
+            rospy.logwarn_throttle(10.0, "y velocity setpoint outside safe region!")
+            return 0.0
+
+        # return 0.0 if y_pos is 'unsafe'
         if ((self.current_y_pos < self.min_y_limit) or (self.current_y_pos > self.max_y_limit)):
-            rospy.logwarn_throttle(5.0, "Diving y outside safe region!")
+            rospy.logwarn_throttle(10.0, "y outside safe region!")
             return 0.0
         
         if self.controller_type == 0:

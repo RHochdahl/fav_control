@@ -112,39 +112,39 @@ class MixerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            self.enable_x = congig.enable_x
+            self.enable_x = config.enable_x
             if not self.enable_x:
                 rospy.logwarn('X-Controller is disabled.')
-            self.enable_y = congig.enable_y
+            self.enable_y = config.enable_y
             if not self.enable_y:
                 rospy.logwarn('Y-Controller is disabled.')
-            self.enable_z = congig.enable_z
+            self.enable_z = config.enable_z
             if not self.enable_z:
                 rospy.logwarn('Z-Controller is disabled.')
-            self.enable_roll = congig.enable_roll
+            self.enable_roll = config.enable_roll
             if not self.enable_roll:
                 rospy.logwarn('Roll-Controller is disabled.')
-            self.enable_pitch = congig.enable_pitch
+            self.enable_pitch = config.enable_pitch
             if not self.enable_pitch:
                 rospy.logwarn('Pitch-Controller is disabled.')
-            self.enable_yaw = congig.enable_yaw
+            self.enable_yaw = config.enable_yaw
             if not self.enable_yaw:
                 rospy.logwarn('Yaw-Controller is disabled.')
 
-            self.roll_is_zero = roll_is_zero
-            self.pitch_is_zero = pitch_is_zero
+            self.roll_is_zero = config.roll_is_zero
+            self.pitch_is_zero = config.pitch_is_zero
 
         return config
 
     def on_state(self, msg):
         with self.data_lock:
             self.state_msg_time = msg.header.stamp.to_sec()
-            euler = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+            roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
             if self.roll_is_zero:
-                euler[0] = 0
+                roll = 0
             if self.pitch_is_zero:
-                euler[1] = 0
-            self.rot_matrix = tf.transformations.euler_matrix(euler[0], euler[1], euler[2])[:3, :3]
+                pitch = 0
+            self.rot_matrix = tf.transformations.euler_matrix(roll, pitch, yaw)[:3, :3]
 
     def on_roll(self, msg):
         with self.data_lock:
@@ -217,22 +217,22 @@ class MixerNode():
             self.lateral_thrust = 0.0
             return
         if self.enable_roll and (self.roll_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No roll control received!")
+            rospy.logwarn_throttle(10.0, "No roll control received!")
             self.roll = 0.0
         if self.enable_pitch and (self.pitch_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No pitch control received!")
+            rospy.logwarn_throttle(10.0, "No pitch control received!")
             self.pitch = 0.0
         if self.enable_yaw and (self.yaw_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No yaw control received!")
+            rospy.logwarn_throttle(10.0, "No yaw control received!")
             self.yaw = 0.0
         if self.enable_x and (self.thrust_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No thrust control received!")
+            rospy.logwarn_throttle(10.0, "No thrust control received!")
             self.thrust = 0.0
         if self.enable_y and (self.vertical_thrust_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No vertical_thrust control received!")
+            rospy.logwarn_throttle(10.0, "No vertical_thrust control received!")
             self.vertical_thrust = 0.0
         if self.enable_z and (self.lateral_thrust_msg_time < latest_time_allowed):
-            rospy.logwarn_throttle(1.0, "No lateral_thrust control received!")
+            rospy.logwarn_throttle(10.0, "No lateral_thrust control received!")
             self.lateral_thrust = 0.0
 
     def mix(self):

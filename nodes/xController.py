@@ -12,9 +12,8 @@ import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 from nav_msgs.msg import Odometry
-from depth_controller.msg import StateVector2D
-from depth_controller.msg import StateVector3D
-from depth_controller.msg import ParametersList
+from fav_control.msg import StateVector2D
+from fav_control.msg import StateVector3D
 
 
 class ControllerNode():
@@ -37,8 +36,6 @@ class ControllerNode():
         self.kappa = 2.5
         self.epsilon = 0.4
 
-        self.int_sat = 0.01
-
         self.desired_x_pos = -0.5
         self.desired_x_velocity = 0.0
         self.desired_x_acceleration = 0.0
@@ -51,6 +48,7 @@ class ControllerNode():
 
         self.min_x_limit = 0.1
         self.max_x_limit = 1.5
+        self.x_d_limit = 0.5
 
         rospy.init_node("yController")
         
@@ -73,7 +71,7 @@ class ControllerNode():
         rospy.sleep(5.0)
         self.report_readiness(True)
 
-        self.server = Server(YControlConfig, self.server_callback)
+        self.server = Server(XControlConfig, self.server_callback)
 
         self.setpoint_sub = rospy.Subscriber("x_setpoint",
                                             StateVector3D,
@@ -138,23 +136,28 @@ class ControllerNode():
 
     def controller(self):
         if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(1.0, "No state information received!")
+            rospy.logwarn_throttle(10.0, "No state information received!")
             return 0.0
 
         if self.controller_type is None:
-            rospy.logwarn_throttle(1.0, "No controller chosen!")
+            rospy.logwarn_throttle(10.0, "No controller chosen!")
             return 0.0
 
-        # return 0.0 if x_pos or setpoint is 'unsafe'
+        # return 0.0 if setpoint is 'unsafe'
         if ((self.desired_x_pos < self.min_x_limit) or (self.desired_x_pos > self.max_x_limit)):
-            rospy.logwarn_throttle(1.0, "x setpoint outside safe region!")
+            rospy.logwarn_throttle(10.0, "x setpoint outside safe region!")
             return 0.0
 
-        # return 0.0 if x_pos or setpoint is 'unsafe'
-        if ((self.current_x_pos < self.min_x_limit) or (self.current_x_pos > self.max_x_limit)):
-            rospy.logwarn_throttle(5.0, "Diving x outside safe region!")
+        # return 0.0 if setpoint velocity is 'unsafe'
+        if ((self.desired_x_velocity < -self.x_d_limit) or (self.desired_x_velocity > self.x_d_limit)):
+            rospy.logwarn_throttle(10.0, "x velocity setpoint outside safe region!")
             return 0.0
-        
+
+        # return 0.0 if x_pos is 'unsafe'
+        if ((self.current_x_pos < self.min_x_limit) or (self.current_x_pos > self.max_x_limit)):
+            rospy.logwarn_throttle(10.0, "x outside safe region!")
+            return 0.0
+
         delta_t = rospy.get_time() - self.time
         self.time = rospy.get_time()
         
