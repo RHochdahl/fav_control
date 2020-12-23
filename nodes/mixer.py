@@ -26,7 +26,15 @@ class MixerNode():
 
         self.data_lock = threading.RLock()
 
-        self.thruster = self.init_mixing()
+        self.mix_matrix_raw = (1.0/3.0) * np.array([[1, 1, 0, 0, 0, 1],
+                                                    [1, -1, 0, 0, 0, -1],
+                                                    [-1, 1, 0, 0, 0, -1],
+                                                    [-1, -1, 0, 0, 0, 1],
+                                                    [0, 0, 1, -1, -1, 0],
+                                                    [0, 0, -1, -1, 1, 0],
+                                                    [0, 0, -1, 1, -1, 0],
+                                                    [0, 0, 1, 1, 1, 0]])
+        self.mix_matrix = self.mix_matrix_raw.copy()
 
         self.roll = 0.0
         self.pitch = 0.0
@@ -34,13 +42,6 @@ class MixerNode():
         self.thrust = 0.0
         self.vertical_thrust = 0.0
         self.lateral_thrust = 0.0
-
-        self.roll_raw = 0.0
-        self.pitch_raw = 0.0
-        self.yaw_raw = 0.0
-        self.thrust_raw = 0.0
-        self.vertical_thrust_raw = 0.0
-        self.lateral_thrust_raw = 0.0
         
         self.roll_msg_time = 0.0
         self.pitch_msg_time = 0.0
@@ -144,75 +145,64 @@ class MixerNode():
                 roll = 0
             if self.pitch_is_zero:
                 pitch = 0
-            # rospy.loginfo_throttle(1, '\n' + str(roll) + '\n' + str(pitch) + '\n' + str(yaw))
-            self.rot_matrix = tf.transformations.euler_matrix(roll, pitch, yaw)[:3, :3]
-            self.transform()
+            rot_matrix = tf.transformations.euler_matrix(roll, pitch, yaw)[:3, :3]
+            double_rot_matrix = np.zeros([6, 6])
+            double_rot_matrix[:3, :3] = rot_matrix.T.copy()
+            double_rot_matrix[3:, 3:] = rot_matrix.T.copy()
+            self.mix_matrix = np.matmul(self.mix_matrix_raw, double_rot_matrix)
 
     def on_roll(self, msg):
         with self.data_lock:
             if self.enable_roll:
-                self.roll_raw = msg.data
+                self.roll = msg.data
                 self.roll_msg_time = rospy.get_time()
             else:
-                self.roll_raw = 0
+                self.roll = 0
 
     def on_pitch(self, msg):
         with self.data_lock:
             if self.enable_pitch:
-                self.pitch_raw = msg.data
+                self.pitch = msg.data
                 self.pitch_msg_time = rospy.get_time()
             else:
-                self.pitch_raw = 0
+                self.pitch = 0
 
     def on_yaw(self, msg):
         with self.data_lock:
             if self.enable_yaw:
-                self.yaw_raw = msg.data
+                self.yaw = msg.data
                 self.yaw_msg_time = rospy.get_time()
             else:
-                self.yaw_raw = 0
+                self.yaw = 0
 
     def on_thrust(self, msg):
         with self.data_lock:
             if self.enable_x:
-                self.thrust_raw = msg.data
+                self.thrust = msg.data
                 self.thrust_msg_time = rospy.get_time()
             else:
-                self.thrust_raw = 0
+                self.thrust = 0
 
     def on_vertical_thrust(self, msg):
         with self.data_lock:
             if self.enable_z:
-                self.vertical_thrust_raw = msg.data
+                self.vertical_thrust = msg.data
                 self.vertical_thrust_msg_time = rospy.get_time()
             else:
-                self.vertical_thrust_raw = 0
+                self.vertical_thrust = 0
 
     def on_lateral_thrust(self, msg):
         with self.data_lock:
             if self.enable_y:
-                self.lateral_thrust_raw = msg.data
+                self.lateral_thrust = msg.data
                 self.lateral_thrust_msg_time = rospy.get_time()
             else:
-                self.lateral_thrust_raw = 0
-
-    def transform(self):
-        with self.data_lock:
-            buf_lin = np.matmul(self.rot_matrix.T, np.array([[self.thrust_raw], [self.lateral_thrust_raw], [self.vertical_thrust_raw]]))
-            buf_ang = np.matmul(self.rot_matrix.T, np.array([[self.roll_raw], [self.pitch_raw], [self.yaw_raw]]))
-            self.thrust = buf_lin[0, 0]
-            self.lateral_thrust = buf_lin[1, 0]
-            self.vertical_thrust = buf_lin[2, 0]
-            self.roll = buf_ang[0, 0]
-            self.pitch = buf_ang[1, 0]
-            self.yaw = buf_ang[2, 0]
-            # rospy.loginfo_throttle(1.0, buf_lin)
+                self.lateral_thrust = 0
 
     def check_msg_times(self):
-        # rospy.loginfo_throttle(1, 'sub\n' + str(self.roll) + '\n' + str(self.pitch) + '\n' + str(self.yaw) + '\n' + str(self.thrust) + '\n' + str(self.lateral_thrust) + '\n' + str(self.vertical_thrust))
         latest_time_allowed = rospy.get_time() - self.max_msg_timeout
         if self.state_msg_time < latest_time_allowed:
-            rospy.logwarn_throttle(1.0, "Mixer received no Orientation Data!")
+            rospy.logwarn_throttle(10.0, "Mixer received no Orientation Data!")
             self.roll = 0.0
             self.pitch = 0.0
             self.yaw = 0.0
@@ -238,76 +228,16 @@ class MixerNode():
         if self.enable_z and (self.vertical_thrust_msg_time < latest_time_allowed):
             rospy.logwarn_throttle(10.0, "No vertical_thrust control received!")
             self.vertical_thrust = 0.0
-        # rospy.loginfo_throttle(1, 'post\n' + str(self.roll) + '\n' + str(self.pitch) + '\n' + str(self.yaw) + '\n' + str(self.thrust) + '\n' + str(self.lateral_thrust) + '\n' + str(self.vertical_thrust))
-
+        
     def mix(self):
         msg = MotorSetpoint()
         msg.header.stamp = rospy.Time.now()
         with self.data_lock:
             self.check_msg_times()
+            u = np.matmul(self.mix_matrix, np.array([self.thrust, self.lateral_thrust, self.vertical_thrust, self.roll, self.pitch, self.yaw]))
             for i in range(8):
-                msg.setpoint[i] = 0.33 * (
-                    self.roll * self.thruster[i]["roll"] +
-                    self.pitch * self.thruster[i]["pitch"] +
-                    self.yaw * self.thruster[i]["yaw"] +
-                    self.thrust * self.thruster[i]["thrust"] +
-                    self.vertical_thrust * self.thruster[i]["vertical_thrust"] +
-                    self.lateral_thrust * self.thruster[i]["lateral_thrust"])
+                msg.setpoint[i] = u[i]
         return msg
-
-    def init_mixing(self):
-        thruster = [None] * 8
-        # roll, pitch, yaw, thrust, lateral thrust, vertical thrust
-        thruster[0] = dict(roll=0.0,
-                           pitch=0.0,
-                           yaw=1.0,
-                           thrust=1.0,
-                           lateral_thrust=1.0,
-                           vertical_thrust=0.0)
-        thruster[1] = dict(roll=0.0,
-                           pitch=0.0,
-                           yaw=-1.0,
-                           thrust=1.0,
-                           lateral_thrust=-1.0,
-                           vertical_thrust=0.0)
-        thruster[2] = dict(roll=0.0,
-                           pitch=0.0,
-                           yaw=1.0, # -1.0
-                           thrust=1.0, # -1.0
-                           lateral_thrust=-1.0, # 1.0
-                           vertical_thrust=0.0)
-        thruster[3] = dict(roll=0.0,
-                           pitch=0.0,
-                           yaw=-1.0, # 1.0
-                           thrust=1.0, # -1.0
-                           lateral_thrust=1.0, # -1.0
-                           vertical_thrust=0.0)
-        thruster[4] = dict(roll=-1.0,
-                           pitch=-1.0,
-                           yaw=0.0,
-                           thrust=0.0,
-                           lateral_thrust=0.0,
-                           vertical_thrust=1.0)
-        thruster[5] = dict(roll=-1.0,
-                           pitch=1.0,
-                           yaw=0.0,
-                           thrust=0.0,
-                           lateral_thrust=0.0,
-                           vertical_thrust=-1.0)
-        thruster[6] = dict(roll=1.0,
-                           pitch=-1.0,
-                           yaw=0.0,
-                           thrust=0.0,
-                           lateral_thrust=0.0,
-                           vertical_thrust=-1.0)
-        thruster[7] = dict(roll=1.0,
-                           pitch=1.0,
-                           yaw=0.0,
-                           thrust=0.0,
-                           lateral_thrust=0.0,
-                           vertical_thrust=1.0)
-
-        return thruster
 
 
 def main():
