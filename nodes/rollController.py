@@ -21,6 +21,9 @@ from fav_control.msg import StateVector3D
 
 class ControllerNode():
     def __init__(self):
+        self.simulate = rospy.get_param("simulate")
+        self.use_ground_truth = rospy.get_param("use_ground_truth")
+
         self.e1 = 0.0
         self.e2 = 0.0
         
@@ -67,10 +70,16 @@ class ControllerNode():
         self.controller_ready_pub = rospy.Publisher("roll_controller_ready",
                                           Bool,
                                           queue_size=1)
-        self.state_sub = rospy.Subscriber("estimated_state",
-                                          Odometry,
-                                          self.get_current_state,
-                                          queue_size=1)
+        if self.use_ground_truth and self.simulate:
+            self.state_sub = rospy.Subscriber("/ground_truth/state",
+                                            Odometry,
+                                            self.get_current_state,
+                                            queue_size=1)
+        else:
+            self.state_sub = rospy.Subscriber("estimated_state",
+                                            Odometry,
+                                            self.get_current_state,
+                                            queue_size=1)
 
         self.time = rospy.get_time()
 

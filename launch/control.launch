@@ -8,6 +8,7 @@
     <arg name="launch_roll_control" default="false"/>
     <arg name="launch_pitch_control" default="false"/>
     <arg name="launch_yaw_control" default="true"/>
+    <arg name="use_ground_truth" default="false"/>
     <arg name="record" default="false"/>
 
     <group if="$(arg launch_simulation)">
@@ -19,7 +20,7 @@
     </group>
 
     <param name="simulate" value="$(arg simulate)" type="bool" />
-
+    <param name="use_ground_truth" value="$(arg use_ground_truth)" type="bool" />
     <node name="mixer" pkg="fav_control" type="mixer.py" output="screen" />
 
     <group if="$(arg launch_x_control)">
