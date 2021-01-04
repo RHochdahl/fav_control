@@ -76,7 +76,12 @@ class ControllerNode():
                                             Odometry,
                                             self.get_current_state,
                                             queue_size=1)
-
+        ###
+        # self.state_sub = rospy.Subscriber("/ground_truth/state",
+        #                                     Odometry,
+        #                                     self.calculate_estimation_error,
+        #                                     queue_size=1)
+        ###
         rospy.sleep(5.0)
         self.report_readiness(True)
 
@@ -87,6 +92,13 @@ class ControllerNode():
                                             self.get_setpoint,
                                             queue_size=1)
     
+    def calculate_estimation_error(self, msg):
+        with self.data_lock:
+            if self.current_y_pos is not None:
+                ground_truth_y = msg.pose.pose.position.y
+                estimation_error = self.current_y_pos - ground_truth_y
+                # rospy.loginfo(estimation_error)
+
     def run(self):
         rate = rospy.Rate(50.0)
 
