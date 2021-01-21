@@ -1,7 +1,8 @@
 <launch>
 
     <arg name="simulate" default="true"/>
-    <arg name="launch_simulation" default="true"/>
+    <arg name="launch_simulation" default="false"/>
+    <arg name="get_setpoints" default="true"/>
     <arg name="launch_x_control" default="true"/>
     <arg name="launch_y_control" default="true"/>
     <arg name="launch_z_control" default="true"/>
@@ -17,6 +18,10 @@
         <include file="$(find bluerov_sim)/launch/spawn_vehicle.launch">
             <arg name="z" value="-0.3"/>
         </include>
+    </group>
+
+    <group if="$(arg get_setpoints)">
+        <node name="setpoints" pkg="fav_control" type="setpoints.py" output="screen" />
     </group>
 
     <param name="simulate" value="$(arg simulate)" type="bool" />

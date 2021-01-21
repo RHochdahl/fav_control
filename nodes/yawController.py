@@ -14,7 +14,8 @@ import threading
 import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import TwistWithCovarianceStamped
 from fav_control.msg import StateVector2D
 from fav_control.msg import StateVector3D
 
@@ -48,7 +49,8 @@ class ControllerNode():
         self.current_yaw = None
         self.current_yaw_vel = None
 
-        self.state_msg_time = 0.0
+        self.pose_msg_time = 0.0
+        self.twist_msg_time = 0.0
 
         self.max_msg_timeout = 0.1
 
@@ -65,16 +67,15 @@ class ControllerNode():
         self.controller_ready_pub = rospy.Publisher("yaw_controller_ready",
                                           Bool,
                                           queue_size=1)
-        if self.use_ground_truth and self.simulate:
-            self.state_sub = rospy.Subscriber("/ground_truth/state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
-        else:
-            self.state_sub = rospy.Subscriber("estimated_state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
+
+        self.pose_sub = rospy.Subscriber("ekf_pose",
+                                         PoseWithCovarianceStamped,
+                                         self.get_current_pose,
+                                         queue_size=1)
+        self.twist_sub = rospy.Subscriber("ekf_twist",
+                                          TwistWithCovarianceStamped,
+                                          self.get_current_twist,
+                                          queue_size=1)
 
         rospy.sleep(5.0)
         self.report_readiness(True)
@@ -107,15 +108,27 @@ class ControllerNode():
         with self.data_lock:
             rospy.loginfo("New Parameters received by yaw_Controller")
 
-            self.controller_type = config.controller_type
+            if config.dynamic_reconfigure:
+                self.controller_type = config.controller_type
 
-            self.k_p = config.k_p
-            self.k_d = config.k_d
+                self.k_p = config.k_p
+                self.k_d = config.k_d
 
-            self.alpha = config.alpha
-            self.Lambda = config.Lambda
-            self.kappa = config.kappa
-            self.epsilon = config.epsilon
+                self.alpha = config.alpha
+                self.Lambda = config.Lambda
+                self.kappa = config.kappa
+                self.epsilon = config.epsilon
+
+            else:
+                config.controller_type = self.controller_type
+
+                config.k_p = self.k_p
+                config.k_d = self.k_d
+
+                config.alpha = self.alpha
+                config.Lambda = self.Lambda
+                config.kappa = self.kappa
+                config.epsilon = self.epsilon
             
         return config
 
@@ -138,14 +151,26 @@ class ControllerNode():
     
     def get_current_state(self, msg):
         with self.data_lock:
-            quaternion = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
-            self.current_yaw = tf.transformations.euler_from_quaternion(quaternion)[2]
-            self.current_yaw_vel = msg.twist.twist.angular.z
             self.state_msg_time = rospy.get_time()
 
+    def get_current_pose(self, msg):
+        with self.data_lock:
+            quaternion = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
+            self.current_yaw = tf.transformations.euler_from_quaternion(quaternion)[2]
+            self.pose_msg_time = rospy.get_time()
+
+    def get_current_twist(self, msg):
+        with self.data_lock:
+            self.current_yaw_vel = msg.twist.twist.angular.z
+            self.twist_msg_time = rospy.get_time()
+
     def controller(self):
-        if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(10.0, "No state information received!")
+        if (rospy.get_time() - self.pose_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No pose received!")
+            return 0.0
+
+        if (rospy.get_time() - self.twist_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No twist received!")
             return 0.0
 
         if self.controller_type is None:

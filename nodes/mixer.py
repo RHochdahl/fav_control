@@ -4,7 +4,7 @@ import threading
 from std_msgs.msg import Float64
 from mavros_msgs.srv import CommandBool
 from mavros_msgs.msg import MotorSetpoint
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
 import tf
 import numpy as np
 from dynamic_reconfigure.server import Server
@@ -64,8 +64,8 @@ class MixerNode():
         self.roll_is_zero = True
         self.pitch_is_zero = True
 
-        self.estimated_state_sub = rospy.Subscriber("estimated_state",
-                                                    Odometry,
+        self.estimated_state_sub = rospy.Subscriber("ekf_pose",
+                                                    PoseWithCovarianceStamped,
                                                     self.on_state,
                                                     queue_size=1)
         self.roll_sub = rospy.Subscriber("roll",

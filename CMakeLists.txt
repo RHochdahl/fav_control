@@ -17,6 +17,7 @@ generate_dynamic_reconfigure_options(
   cfg/YControl.cfg
   cfg/ZControl.cfg
   cfg/Mix.cfg
+  cfg/Setpoints.cfg
 )
 
 # for c code

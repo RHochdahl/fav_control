@@ -11,7 +11,8 @@ import threading
 import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import TwistWithCovarianceStamped
 from fav_control.msg import StateVector2D
 from fav_control.msg import StateVector3D
 
@@ -47,7 +48,8 @@ class ControllerNode():
         self.current_z_pos = None
         self.current_z_velocity = None
 
-        self.state_msg_time = 0.0
+        self.pose_msg_time = 0.0
+        self.twist_msg_time = 0.0
 
         self.max_msg_timeout = 0.1
 
@@ -55,30 +57,29 @@ class ControllerNode():
         self.shallow_z_limit = -0.1
         self.z_d_limit = 0.5
 
-        self.k_i = 0.2 # 1.0
+        self.k_i = 0.2  # 1.0
         self.integrator_buffer = 0.0
 
         rospy.init_node("zController")
         
         self.vertical_thrust_pub = rospy.Publisher("vertical_thrust",
-                                                    Float64,
-                                                    queue_size=1)
+                                                   Float64,
+                                                   queue_size=1)
         self.error_pub = rospy.Publisher("z_control_error",
-                                          StateVector2D,
-                                          queue_size=1)
+                                         StateVector2D,
+                                         queue_size=1)
         self.controller_ready_pub = rospy.Publisher("z_controller_ready",
-                                          Bool,
+                                                    Bool,
+                                                    queue_size=1)
+                                          
+        self.pose_sub = rospy.Subscriber("ekf_pose",
+                                         PoseWithCovarianceStamped,
+                                         self.get_current_pose,
+                                         queue_size=1)
+        self.twist_sub = rospy.Subscriber("ekf_twist",
+                                          TwistWithCovarianceStamped,
+                                          self.get_current_twist,
                                           queue_size=1)
-        if self.use_ground_truth and self.simulate:
-            self.state_sub = rospy.Subscriber("/ground_truth/state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
-        else:
-            self.state_sub = rospy.Subscriber("estimated_state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
 
         self.time = rospy.get_time()
 
@@ -88,9 +89,9 @@ class ControllerNode():
         self.server = Server(ZControlConfig, self.server_callback)
 
         self.setpoint_sub = rospy.Subscriber("z_setpoint",
-                                            StateVector3D,
-                                            self.get_setpoint,
-                                            queue_size=1)
+                                             StateVector3D,
+                                             self.get_setpoint,
+                                             queue_size=1)
 
     def send_control_message(self, u):
         msg = Float64()
@@ -113,20 +114,35 @@ class ControllerNode():
         with self.data_lock:
             rospy.loginfo("New Parameters received by z_Controller")
 
-            self.controller_type = config.controller_type
-            
-            if config.reset_integrator:
-                self.integrator_buffer = 0.0
+            if config.dynamic_reconfigure:
+                self.controller_type = config.controller_type
+                
+                if config.reset_integrator:
+                    self.integrator_buffer = 0.0
+                    config.reset_integrator = False
+
+                self.k_p = config.k_p
+                self.k_d = config.k_d
+
+                self.alpha = config.alpha
+                self.Lambda = config.Lambda
+                self.kappa = config.kappa
+                self.epsilon = config.epsilon
+                self.int_sat = config.int_sat
+
+            else:
+                config.controller_type = self.controller_type
+                
                 config.reset_integrator = False
 
-            self.k_p = config.k_p
-            self.k_d = config.k_d
+                config.k_p = self.k_p
+                config.k_d = self.k_d
 
-            self.alpha = config.alpha
-            self.Lambda = config.Lambda
-            self.kappa = config.kappa
-            self.epsilon = config.epsilon
-            self.int_sat = config.int_sat
+                config.alpha = self.alpha
+                config.Lambda = self.Lambda
+                config.kappa = self.kappa
+                config.epsilon = self.epsilon
+                config.int_sat = self.int_sat
             
         return config
 
@@ -147,15 +163,23 @@ class ControllerNode():
             self.desired_z_velocity = msg.velocity
             self.desired_z_acceleration = msg.acceleration
     
-    def get_current_state(self, msg):
+    def get_current_pose(self, msg):
         with self.data_lock:
             self.current_z_pos = msg.pose.pose.position.z
+            self.pose_msg_time = rospy.get_time()
+
+    def get_current_twist(self, msg):
+        with self.data_lock:
             self.current_z_velocity = msg.twist.twist.linear.z
-            self.state_msg_time = rospy.get_time()
+            self.twist_msg_time = rospy.get_time()
 
     def controller(self):
-        if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(10.0, "No state information received!")
+        if (rospy.get_time() - self.pose_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No pose received!")
+            return 0.0
+
+        if (rospy.get_time() - self.twist_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No twist received!")
             return 0.0
 
         if self.controller_type is None:

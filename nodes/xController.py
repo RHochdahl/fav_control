@@ -11,7 +11,8 @@ import threading
 import math
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import TwistWithCovarianceStamped
 from fav_control.msg import StateVector2D
 from fav_control.msg import StateVector3D
 
@@ -30,11 +31,11 @@ class ControllerNode():
         self.controller_type = 1
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 2.0
-        self.k_d = 0.6
+        self.k_p = 9.0
+        self.k_d = 5.8
 
         # SMC
-        self.alpha = 0.5
+        self.alpha = 1.5
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -47,13 +48,14 @@ class ControllerNode():
         self.x_uncertainty = 1.0
         self.k_u = 2.0
 
-        self.state_msg_time = 0.0
+        self.pose_msg_time = 0.0
+        self.twist_msg_time = 0.0
 
         self.max_msg_timeout = 0.1
 
         self.min_x_limit = 0.1
-        self.max_x_limit = 1.5
-        self.x_d_limit = 0.5
+        self.max_x_limit = 1.6
+        self.x_d_limit = 0.7
 
         rospy.init_node("xController")
         
@@ -66,16 +68,15 @@ class ControllerNode():
         self.controller_ready_pub = rospy.Publisher("x_controller_ready",
                                           Bool,
                                           queue_size=1)
-        if self.use_ground_truth and self.simulate:
-            self.state_sub = rospy.Subscriber("/ground_truth/state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
-        else:
-            self.state_sub = rospy.Subscriber("estimated_state",
-                                            Odometry,
-                                            self.get_current_state,
-                                            queue_size=1)
+        
+        self.pose_sub = rospy.Subscriber("ekf_pose",
+                                         PoseWithCovarianceStamped,
+                                         self.get_current_pose,
+                                         queue_size=1)
+        self.twist_sub = rospy.Subscriber("ekf_twist",
+                                          TwistWithCovarianceStamped,
+                                          self.get_current_twist,
+                                          queue_size=1)
 
         self.time = rospy.get_time()
 
@@ -121,16 +122,29 @@ class ControllerNode():
         with self.data_lock:
             rospy.loginfo("New Parameters received by x_Controller")
 
-            self.controller_type = config.controller_type
-            self.k_u = config.k_u
+            if config.dynamic_reconfigure:
+                self.controller_type = config.controller_type
+                self.k_u = config.k_u
 
-            self.k_p = config.k_p
-            self.k_d = config.k_d
+                self.k_p = config.k_p
+                self.k_d = config.k_d
 
-            self.alpha = config.alpha
-            self.Lambda = config.Lambda
-            self.kappa = config.kappa
-            self.epsilon = config.epsilon
+                self.alpha = config.alpha
+                self.Lambda = config.Lambda
+                self.kappa = config.kappa
+                self.epsilon = config.epsilon
+
+            else:
+                config.controller_type = self.controller_type
+                config.k_u = self.k_u
+
+                config.k_p = self.k_p
+                config.k_d = self.k_d
+
+                config.alpha = self.alpha
+                config.Lambda = self.Lambda
+                config.kappa = self.kappa
+                config.epsilon = self.epsilon
             
         return config
         
@@ -140,16 +154,24 @@ class ControllerNode():
             self.desired_x_velocity = msg.velocity
             self.desired_x_acceleration = msg.acceleration
     
-    def get_current_state(self, msg):
+    def get_current_pose(self, msg):
         with self.data_lock:
             self.current_x_pos = msg.pose.pose.position.x
-            self.current_x_velocity = msg.twist.twist.linear.x
             self.x_uncertainty = msg.pose.covariance[0]
-            self.state_msg_time = rospy.get_time()
+            self.pose_msg_time = rospy.get_time()
+
+    def get_current_twist(self, msg):
+        with self.data_lock:
+            self.current_x_velocity = msg.twist.twist.linear.x
+            self.twist_msg_time = rospy.get_time()
 
     def controller(self):
-        if (rospy.get_time() - self.state_msg_time > self.max_msg_timeout):
-            rospy.logwarn_throttle(10.0, "No state information received!")
+        if (rospy.get_time() - self.pose_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No pose received!")
+            return 0.0
+
+        if (rospy.get_time() - self.twist_msg_time > self.max_msg_timeout):
+            rospy.logwarn_throttle(10.0, "No twist received!")
             return 0.0
 
         if self.controller_type is None:
@@ -170,15 +192,14 @@ class ControllerNode():
         if ((self.current_x_pos < self.min_x_limit) or (self.current_x_pos > self.max_x_limit)):
             rospy.logwarn_throttle(10.0, "x outside safe region!")
             return 0.0
-
-        delta_t = rospy.get_time() - self.time
-        self.time = rospy.get_time()
         
         if self.controller_type == 0:
             # SMC
             self.e1 = self.desired_x_pos - self.current_x_pos
             self.e2 = self.desired_x_velocity - self.current_x_velocity
             s = self.e2 + self.Lambda*self.e1
+            if self.x_uncertainty > 1.0:
+                return 0
             k = 10**(-self.k_u*self.x_uncertainty)
             u = k * self.alpha*(self.desired_x_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
@@ -186,6 +207,8 @@ class ControllerNode():
             # PD-Controller
             self.e1 = self.desired_x_pos - self.current_x_pos
             self.e2 = self.desired_x_velocity - self.current_x_velocity
+            if self.x_uncertainty > 1.0:
+                return 0
             k = 10**(-self.k_u*self.x_uncertainty)
             u = k * (self.k_p * self.e1 + self.k_d * self.e2)
             
