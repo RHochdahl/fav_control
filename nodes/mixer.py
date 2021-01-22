@@ -113,34 +113,46 @@ class MixerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            self.enable_x = config.enable_x
-            if not self.enable_x:
-                rospy.logwarn('X-Controller is disabled.')
-            self.enable_y = config.enable_y
-            if not self.enable_y:
-                rospy.logwarn('Y-Controller is disabled.')
-            self.enable_z = config.enable_z
-            if not self.enable_z:
-                rospy.logwarn('Z-Controller is disabled.')
-            self.enable_roll = config.enable_roll
-            if not self.enable_roll:
-                rospy.logwarn('Roll-Controller is disabled.')
-            self.enable_pitch = config.enable_pitch
-            if not self.enable_pitch:
-                rospy.logwarn('Pitch-Controller is disabled.')
-            self.enable_yaw = config.enable_yaw
-            if not self.enable_yaw:
-                rospy.logwarn('Yaw-Controller is disabled.')
+            if config.dynamic_reconfigure:
+                self.enable_x = config.enable_x
+                if not self.enable_x:
+                    rospy.logwarn('X-Controller is disabled.')
+                self.enable_y = config.enable_y
+                if not self.enable_y:
+                    rospy.logwarn('Y-Controller is disabled.')
+                self.enable_z = config.enable_z
+                if not self.enable_z:
+                    rospy.logwarn('Z-Controller is disabled.')
+                self.enable_roll = config.enable_roll
+                if not self.enable_roll:
+                    rospy.logwarn('Roll-Controller is disabled.')
+                self.enable_pitch = config.enable_pitch
+                if not self.enable_pitch:
+                    rospy.logwarn('Pitch-Controller is disabled.')
+                self.enable_yaw = config.enable_yaw
+                if not self.enable_yaw:
+                    rospy.logwarn('Yaw-Controller is disabled.')
 
-            self.roll_is_zero = config.roll_is_zero
-            self.pitch_is_zero = config.pitch_is_zero
+                self.roll_is_zero = config.roll_is_zero
+                self.pitch_is_zero = config.pitch_is_zero
+            
+            else:
+                config.enable_x = self.enable_x
+                config.enable_y = self.enable_y
+                config.enable_z = self.enable_z
+                config.enable_roll = self.enable_roll
+                config.enable_pitch = self.enable_pitch
+                config.enable_yaw = self.enable_yaw
+
+                config.roll_is_zero = self.roll_is_zero
+                config.pitch_is_zero = self.pitch_is_zero
 
         return config
 
     def on_state(self, msg):
         with self.data_lock:
             self.state_msg_time = msg.header.stamp.to_sec()
-            roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w])
+            roll, pitch, yaw = tf.transformations.euler_from_quaternion([msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w], axes='sxyz')
             if self.roll_is_zero:
                 roll = 0
             if self.pitch_is_zero:

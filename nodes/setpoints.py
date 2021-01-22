@@ -59,6 +59,18 @@ class SetpointsNode():
         self.z_period_time = None
         self.z_wave_init_time = None
         
+        self.roll_sine_wave = False
+        self.roll_mean = None
+        self.roll_amplitude = None
+        self.roll_omega = None
+        self.roll_wave_init_time = None
+        
+        self.pitch_sine_wave = False
+        self.pitch_mean = None
+        self.pitch_amplitude = None
+        self.pitch_omega = None
+        self.pitch_wave_init_time = None
+        
         self.yaw_sine_wave = False
         self.yaw_mean = None
         self.yaw_amplitude = None
@@ -106,6 +118,8 @@ class SetpointsNode():
                 z_msg.acceleration = self.z_setpoint[2]
                 self.z_setpoint_pub.publish(z_msg)
 
+                if self.roll_sine_wave:
+                    self.roll_setpoint = self.sine_wave(self.roll_mean, self.roll_amplitude, self.roll_omega, time-self.roll_wave_init_time)
                 roll_msg = StateVector3D()
                 roll_msg.header.stamp = rospy.Time.now()
                 roll_msg.position = self.roll_setpoint[0]
@@ -113,6 +127,8 @@ class SetpointsNode():
                 roll_msg.acceleration = self.roll_setpoint[2]
                 self.roll_setpoint_pub.publish(roll_msg)
 
+                if self.pitch_sine_wave:
+                    self.pitch_setpoint = self.sine_wave(self.pitch_mean, self.pitch_amplitude, self.pitch_omega, time-self.pitch_wave_init_time)
                 pitch_msg = StateVector3D()
                 pitch_msg.header.stamp = rospy.Time.now()
                 pitch_msg.position = self.pitch_setpoint[0]
@@ -175,6 +191,28 @@ class SetpointsNode():
                 z_frequency = config.z_frequency
                 self.z_omega = 2*np.pi*z_frequency
                 self.z_period_time = 1.0/z_frequency
+            
+            self.roll_sine_wave = config.roll_sine_wave
+            if not self.roll_sine_wave:
+                self.roll_setpoint[0] = (np.pi/180) * config.roll_setpoint
+                self.roll_wave_init_time = None
+            else:
+                if self.roll_wave_init_time is None:
+                    self.roll_wave_init_time = time
+                self.roll_mean = np.pi/2
+                self.roll_amplitude = (np.pi/180) * config.roll_amplitude
+                self.roll_omega = 2*np.pi*config.roll_frequency
+            
+            self.pitch_sine_wave = config.pitch_sine_wave
+            if not self.pitch_sine_wave:
+                self.pitch_setpoint[0] = (np.pi/180) * config.pitch_setpoint
+                self.pitch_wave_init_time = None
+            else:
+                if self.pitch_wave_init_time is None:
+                    self.pitch_wave_init_time = time
+                self.pitch_mean = np.pi/2
+                self.pitch_amplitude = (np.pi/180) * config.pitch_amplitude
+                self.pitch_omega = 2*np.pi*config.pitch_frequency
             
             self.yaw_sine_wave = config.yaw_sine_wave
             if not self.yaw_sine_wave:

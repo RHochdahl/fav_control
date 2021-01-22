@@ -47,6 +47,8 @@ class ControllerNode():
         self.desired_z_acceleration = 0.0
         self.current_z_pos = None
         self.current_z_velocity = None
+        self.z_uncertainty = 1.0
+        self.k_u = 2.0
 
         self.pose_msg_time = 0.0
         self.twist_msg_time = 0.0
@@ -112,10 +114,11 @@ class ControllerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            rospy.loginfo("New Parameters received by z_Controller")
-
             if config.dynamic_reconfigure:
+                rospy.loginfo("New Parameters received by z_Controller")
+
                 self.controller_type = config.controller_type
+                self.k_u = config.k_u
                 
                 if config.reset_integrator:
                     self.integrator_buffer = 0.0
@@ -132,6 +135,7 @@ class ControllerNode():
 
             else:
                 config.controller_type = self.controller_type
+                config.k_u = self.k_u
                 
                 config.reset_integrator = False
 
@@ -166,6 +170,7 @@ class ControllerNode():
     def get_current_pose(self, msg):
         with self.data_lock:
             self.current_z_pos = msg.pose.pose.position.z
+            self.z_uncertainty = msg.pose.covariance[14]
             self.pose_msg_time = rospy.get_time()
 
     def get_current_twist(self, msg):
@@ -203,6 +208,9 @@ class ControllerNode():
         
         delta_t = rospy.get_time() - self.time
         self.time = rospy.get_time()
+
+        if self.z_uncertainty > 1.0:
+            return 0
         
         if self.controller_type == 0:
             # integral-SMC
@@ -230,16 +238,18 @@ class ControllerNode():
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
-
-        return self.sat(u)
+        
+        k = 10**(-self.k_u*self.z_uncertainty)
+        return self.sat(k*u)
 
     def sat(self, x, limit=1.0):
         return min(max(x, -limit), limit)
 
+
 def main():
-   node = ControllerNode()
-   node.run()
+    node = ControllerNode()
+    node.run()
 
 
 if __name__ == "__main__":
-   main()
+    main()

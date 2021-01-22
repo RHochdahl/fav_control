@@ -120,9 +120,9 @@ class ControllerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            rospy.loginfo("New Parameters received by x_Controller")
-
             if config.dynamic_reconfigure:
+                rospy.loginfo("New Parameters received by x_Controller")
+    
                 self.controller_type = config.controller_type
                 self.k_u = config.k_u
 
@@ -192,39 +192,39 @@ class ControllerNode():
         if ((self.current_x_pos < self.min_x_limit) or (self.current_x_pos > self.max_x_limit)):
             rospy.logwarn_throttle(10.0, "x outside safe region!")
             return 0.0
+
+        if self.x_uncertainty > 1.0:
+            return 0
         
         if self.controller_type == 0:
             # SMC
             self.e1 = self.desired_x_pos - self.current_x_pos
             self.e2 = self.desired_x_velocity - self.current_x_velocity
             s = self.e2 + self.Lambda*self.e1
-            if self.x_uncertainty > 1.0:
-                return 0
             k = 10**(-self.k_u*self.x_uncertainty)
-            u = k * self.alpha*(self.desired_x_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            u = self.alpha*(self.desired_x_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         elif self.controller_type == 1:
             # PD-Controller
             self.e1 = self.desired_x_pos - self.current_x_pos
             self.e2 = self.desired_x_velocity - self.current_x_velocity
-            if self.x_uncertainty > 1.0:
-                return 0
-            k = 10**(-self.k_u*self.x_uncertainty)
-            u = k * (self.k_p * self.e1 + self.k_d * self.e2)
+            u = self.k_p * self.e1 + self.k_d * self.e2
             
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
 
-        return self.sat(u)
+        k = 10**(-self.k_u*self.x_uncertainty)
+        return self.sat(k*u)
 
     def sat(self, x, limit=1.0):
         return min(max(x, -limit), limit)
 
+
 def main():
-   node = ControllerNode()
-   node.run()
+    node = ControllerNode()
+    node.run()
 
 
 if __name__ == "__main__":
-   main()
+    main()

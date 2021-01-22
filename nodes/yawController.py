@@ -48,6 +48,8 @@ class ControllerNode():
         self.desired_yaw_acc = 0.0
         self.current_yaw = None
         self.current_yaw_vel = None
+        self.yaw_uncertainty = 1.0
+        self.k_u = 2.0
 
         self.pose_msg_time = 0.0
         self.twist_msg_time = 0.0
@@ -106,10 +108,11 @@ class ControllerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            rospy.loginfo("New Parameters received by yaw_Controller")
-
             if config.dynamic_reconfigure:
+                rospy.loginfo("New Parameters received by yaw_Controller")
+
                 self.controller_type = config.controller_type
+                self.k_u = config.k_u
 
                 self.k_p = config.k_p
                 self.k_d = config.k_d
@@ -121,6 +124,7 @@ class ControllerNode():
 
             else:
                 config.controller_type = self.controller_type
+                config.k_u = self.k_u
 
                 config.k_p = self.k_p
                 config.k_d = self.k_d
@@ -157,6 +161,7 @@ class ControllerNode():
         with self.data_lock:
             quaternion = [msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
             self.current_yaw = tf.transformations.euler_from_quaternion(quaternion)[2]
+            self.yaw_uncertainty = msg.pose.covariance[35]
             self.pose_msg_time = rospy.get_time()
 
     def get_current_twist(self, msg):
@@ -181,6 +186,9 @@ class ControllerNode():
         if ((self.desired_yaw_vel < -self.yaw_d_limit) or (self.desired_yaw_vel > self.yaw_d_limit)):
             rospy.logwarn_throttle(10.0, "yaw angular velocity setpoint outside safe region!")
             return 0.0
+
+        if self.yaw_uncertainty > 1.0:
+            return 0
         
         if self.controller_type == 0:
             # SMC
@@ -199,7 +207,8 @@ class ControllerNode():
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
 
-        return self.sat(u)
+        k = 10**(-self.k_u*self.yaw_uncertainty)
+        return self.sat(k*u)
 
     def get_angular_error(self, desired_angle, current_angle):
         e = (desired_angle % (2*np.pi)) - (current_angle % (2*np.pi))
@@ -213,10 +222,11 @@ class ControllerNode():
     def sat(self, x, limit=1.0):
         return min(max(x, -limit), limit)
 
+
 def main():
-   node = ControllerNode()
-   node.run()
+    node = ControllerNode()
+    node.run()
 
 
 if __name__ == "__main__":
-   main()
+    main()

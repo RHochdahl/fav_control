@@ -125,9 +125,9 @@ class ControllerNode():
 
     def server_callback(self, config, level):
         with self.data_lock:
-            rospy.loginfo("New Parameters received by y_Controller")
-
             if config.dynamic_reconfigure:
+                rospy.loginfo("New Parameters received by y_Controller")
+
                 self.controller_type = config.controller_type
                 self.k_u = config.k_u
 
@@ -198,30 +198,28 @@ class ControllerNode():
             rospy.logwarn_throttle(10.0, "y outside safe region!")
             return 0.0
         
+        if self.y_uncertainty > 1.0:
+            return 0
+
         if self.controller_type == 0:
             # integral-SMC
             self.e1 = self.desired_y_pos - self.current_y_pos
             self.e2 = self.desired_y_velocity - self.current_y_velocity
             s = self.e2 + self.Lambda*self.e1
-            if self.y_uncertainty > 1.0:
-                return 0
-            k = 10**(-self.k_u*self.y_uncertainty)
-            u = k * self.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            u = elf.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         elif self.controller_type == 1:
             # PID-Controller
             self.e1 = self.desired_y_pos - self.current_y_pos
             self.e2 = self.desired_y_velocity - self.current_y_velocity
-            if self.y_uncertainty > 1.0:
-                return 0
-            k = 10**(-self.k_u*self.y_uncertainty)
-            u = k * (self.k_p * self.e1 + self.k_d * self.e2)
+            u = self.k_p * self.e1 + self.k_d * self.e2
             
         else:
             rospy.logerr_throttle(10.0, "\nError! Undefined Controller chosen.\n")
             return 0.0
 
-        return self.sat(u)
+        k = 10**(-self.k_u*self.y_uncertainty)
+        return self.sat(k*u)
 
     def sat(self, x, limit=1.0):
         return min(max(x, -limit), limit)
