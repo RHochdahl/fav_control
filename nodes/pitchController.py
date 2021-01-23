@@ -34,11 +34,11 @@ class ControllerNode():
         self.controller_type = 1
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 0.1
-        self.k_d = 0.03
+        self.k_p = 3.0
+        self.k_d = 1.4
 
         # SMC
-        self.alpha = 0.5
+        self.alpha = 0.3
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4

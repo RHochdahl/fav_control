@@ -34,11 +34,11 @@ class ControllerNode():
         self.controller_type = 0
 
         # PD-Controller, k_d / k_p ~= 0.6
-        self.k_p = 5.0
-        self.k_d = 2.0
+        self.k_p = 3.0
+        self.k_d = 1.4
 
         # SMC
-        self.alpha = 0.5
+        self.alpha = 0.3
         self.Lambda = 1.5
         self.kappa = 2.5
         self.epsilon = 0.4
@@ -152,10 +152,6 @@ class ControllerNode():
             self.desired_yaw = msg.position
             self.desired_yaw_vel = msg.velocity
             self.desired_yaw_acc = msg.acceleration
-    
-    def get_current_state(self, msg):
-        with self.data_lock:
-            self.state_msg_time = rospy.get_time()
 
     def get_current_pose(self, msg):
         with self.data_lock:
@@ -189,7 +185,7 @@ class ControllerNode():
 
         if self.yaw_uncertainty > 1.0:
             return 0
-        
+
         if self.controller_type == 0:
             # SMC
             self.e1 = self.get_angular_error(self.desired_yaw, self.current_yaw)
