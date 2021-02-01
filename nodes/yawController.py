@@ -39,9 +39,9 @@ class ControllerNode():
 
         # SMC
         self.alpha = 0.3
-        self.Lambda = 1.5
-        self.kappa = 2.5
-        self.epsilon = 0.4
+        self.Lambda = 1.0
+        self.kappa = 1.2
+        self.epsilon = 0.7
 
         self.desired_yaw = -0.5
         self.desired_yaw_vel = 0.0
