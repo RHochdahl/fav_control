@@ -35,7 +35,7 @@ class ControllerNode():
         self.k_d = 5.8
 
         # SMC
-        self.alpha = 1.5
+        self.alpha = 1.0
         self.Lambda = 1.0
         self.kappa = 1.2
         self.epsilon = 0.7

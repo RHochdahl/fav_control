@@ -28,14 +28,14 @@ class ControllerNode():
         self.data_lock = threading.RLock()
 
         # 0 =SMC, 1=PD-Controller
-        self.controller_type = 1
+        self.controller_type = 0
 
         # PD-Controller, k_d / k_p ~= 0.6
         self.k_p = 9.0
         self.k_d = 5.8
 
         # SMC
-        self.alpha = 1.5
+        self.alpha = 2.5
         self.Lambda = 1.0
         self.kappa = 1.2
         self.epsilon = 0.7

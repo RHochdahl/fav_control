@@ -28,14 +28,14 @@ class ControllerNode():
         self.data_lock = threading.RLock()
 
         # 0 =integral-SMC, 1=PID-Controller, 2=SMC with separate i
-        self.controller_type = 1
+        self.controller_type = 0
 
         # PD-Controller, k_d / k_p ~= 0.6
         self.k_p = 9.0
         self.k_d = 5.8
 
         # SMC
-        self.alpha = 1.5
+        self.alpha = 2.5
         self.Lambda = 1.0
         self.kappa = 1.2
         self.epsilon = 0.7
@@ -206,7 +206,7 @@ class ControllerNode():
             self.e1 = self.desired_y_pos - self.current_y_pos
             self.e2 = self.desired_y_velocity - self.current_y_velocity
             s = self.e2 + self.Lambda*self.e1
-            u = elf.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
+            u = self.alpha*(self.desired_y_acceleration+self.Lambda*self.e2+self.kappa*(s/(abs(s)+self.epsilon)))
 
         elif self.controller_type == 1:
             # PID-Controller
