@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 PACKAGE = 'fav_control'
-import roslib;roslib.load_manifest(PACKAGE)
+# import roslib;roslib.load_manifest(PACKAGE)
 import rospy
 
 from dynamic_reconfigure.server import Server
@@ -13,14 +13,17 @@ from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import TwistWithCovarianceStamped
+from nav_msgs.msg import Odometry
 from fav_control.msg import StateVector2D
 from fav_control.msg import StateVector3D
 
 
 class ControllerNode():
     def __init__(self):
-        self.simulate = rospy.get_param("simulate")
-        self.use_ground_truth = rospy.get_param("use_ground_truth")
+        rospy.init_node("yController")
+
+        self.simulate = rospy.get_param("simulate", True)
+        self.use_ground_truth = rospy.get_param("use_ground_truth", False)
 
         self.e1 = 0.0
         self.e2 = 0.0
@@ -57,8 +60,6 @@ class ControllerNode():
         self.max_y_limit = 3.3
         self.y_d_limit = 0.7
 
-        rospy.init_node("yController")
-        
         self.lateral_thrust_pub = rospy.Publisher("lateral_thrust",
                                                     Float64,
                                                     queue_size=1)
@@ -68,15 +69,21 @@ class ControllerNode():
         self.controller_ready_pub = rospy.Publisher("y_controller_ready",
                                           Bool,
                                           queue_size=1)
-                                          
-        self.pose_sub = rospy.Subscriber("ekf_pose",
-                                         PoseWithCovarianceStamped,
-                                         self.get_current_pose,
-                                         queue_size=1)
-        self.twist_sub = rospy.Subscriber("ekf_twist",
-                                          TwistWithCovarianceStamped,
-                                          self.get_current_twist,
-                                          queue_size=1)
+
+        if self.use_ground_truth and self.simulate:
+            self.ground_truth_state_sub = rospy.Subscriber("ground_truth/state",
+                                                           Odometry,
+                                                           self.get_ground_truth,
+                                                           queue_size=1)
+        else:
+            self.pose_sub = rospy.Subscriber("ekf_pose",
+                                             PoseWithCovarianceStamped,
+                                             self.get_current_pose,
+                                             queue_size=1)
+            self.twist_sub = rospy.Subscriber("ekf_twist",
+                                              TwistWithCovarianceStamped,
+                                              self.get_current_twist,
+                                              queue_size=1)
 
         rospy.sleep(5.0)
         self.report_readiness(True)
@@ -167,6 +174,15 @@ class ControllerNode():
 
     def get_current_twist(self, msg):
         with self.data_lock:
+            self.current_y_velocity = msg.twist.twist.linear.y
+            self.twist_msg_time = rospy.get_time()
+
+    def get_ground_truth(self, msg):
+        with self.data_lock:
+            self.current_y_pos = msg.pose.pose.position.y
+            self.y_uncertainty = msg.pose.covariance[7]
+            self.pose_msg_time = rospy.get_time()
+            
             self.current_y_velocity = msg.twist.twist.linear.y
             self.twist_msg_time = rospy.get_time()
 

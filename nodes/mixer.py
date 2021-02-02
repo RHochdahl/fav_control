@@ -5,6 +5,7 @@ from std_msgs.msg import Float64
 from mavros_msgs.srv import CommandBool
 from mavros_msgs.msg import MotorSetpoint
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
 import tf
 import numpy as np
 from dynamic_reconfigure.server import Server
@@ -19,7 +20,8 @@ class MixerNode():
                                             MotorSetpoint,
                                             queue_size=1)
 
-        self.simulate = rospy.get_param("simulate")
+        self.simulate = rospy.get_param("simulate", True)
+        self.use_ground_truth = rospy.get_param("use_ground_truth", False)
 
         if self.simulate:
             self.arm_vehicle()
@@ -64,18 +66,17 @@ class MixerNode():
         self.roll_is_zero = True
         self.pitch_is_zero = True
 
-        self.estimated_state_sub = rospy.Subscriber("ekf_pose",
-                                                    PoseWithCovarianceStamped,
-                                                    self.on_state,
-                                                    queue_size=1)
-        self.roll_sub = rospy.Subscriber("roll",
-                                         Float64,
-                                         self.on_roll,
-                                         queue_size=1)
-        self.pitch_sub = rospy.Subscriber("pitch",
-                                          Float64,
-                                          self.on_pitch,
-                                          queue_size=1)
+        if self.use_ground_truth and self.simulate:
+            self.ground_truth_state_sub = rospy.Subscriber("ground_truth/state",
+                                                           Odometry,
+                                                           self.on_state,
+                                                           queue_size=1)
+        else:
+            self.estimated_state_sub = rospy.Subscriber("ekf_pose",
+                                                        PoseWithCovarianceStamped,
+                                                        self.on_state,
+                                                        queue_size=1)
+
         self.yaw_sub = rospy.Subscriber("yaw",
                                         Float64,
                                         self.on_yaw,
